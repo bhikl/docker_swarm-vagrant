@@ -1,0 +1,84 @@
+---
+- hosts: all
+  tasks:
+    - name: Install Gluster-server
+      block:
+        - name: Install soft
+          apt:
+            name: software-properties-common
+            state: latest
+            update_cache: true
+        - name: Add Gluster ppa repo
+          ansible.builtin.apt_repository:
+            repo: ppa:gluster/glusterfs-7
+        - name: Update apt and install glusterfs-server
+          apt:
+            name: glusterfs-server
+            state: latest
+            update_cache: true
+        - name: Start service glusterd
+          ansible.builtin.service:
+            name: glusterd
+            state: started
+        - name: Create a directory if it does not exist
+          ansible.builtin.file:
+            path: /bricks/brick1/g1
+            state: directory
+            mode: '0755'
+      when: ansible_facts['nodename'] != 'manager'
+      become: true
+    - name: Init Glusterfs volume
+      block:
+        - name: create gluster volume
+          gluster.gluster.gluster_volume:
+            state: present
+            force: yes
+            replicas: 2
+            name: gvol10
+            bricks: /bricks/brick1/g1
+            cluster:
+              - 192.168.57.201
+              - 192.168.57.202
+          run_once: true
+
+        - name: tune
+          gluster.gluster.gluster_volume:
+            state: present
+            name: gvol10
+            options:
+              performance.cache-size: 256MB
+        - name: start gluster volume
+          gluster.gluster.gluster_volume:
+            state: started
+            name: gvol10 
+      when: ansible_facts['nodename'] == 'worker02'
+      become: true
+    - name: Install Gluster-client
+      block:
+        - name: Install soft
+          apt:
+            name: software-properties-common
+            state: latest
+            update_cache: true
+        - name: Add Gluster ppa repo
+          ansible.builtin.apt_repository:
+            repo: ppa:gluster/glusterfs-7
+        - name: Update apt and install glusterfs-client
+          apt:
+            name: glusterfs-client
+            state: latest
+            update_cache: true
+        - name: Create a directory if it does not exist
+          ansible.builtin.file:
+            path: /mnt/glusterfs
+            state: directory
+            mode: '0755'
+        - name: mount Glusterfs volume
+          mount:
+            path: "/mnt/glusterfs"
+            src: "192.168.57.201:/gvol10"
+            fstype: glusterfs
+            opts: "defaults,_netdev"
+            state: mounted
+      when: ansible_facts['nodename'] == 'manager'
+      become: true

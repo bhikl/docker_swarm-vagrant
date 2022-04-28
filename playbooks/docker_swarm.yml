@@ -1,0 +1,34 @@
+- hosts: all
+  tasks:
+  - name: Init Docker Swarm
+    block:
+      - name: Init a new swarm with default parameters
+        community.docker.docker_swarm:
+          state: present
+          advertise_addr: "192.168.57.200:2377"
+        register: result
+      - name: Get join-token for worker nodes
+        set_fact:
+          join_token_worker: "{{ result.swarm_facts.JoinTokens.Worker }}"
+      - name: Download Portainer config
+        get_url:
+          url: https://downloads.portainer.io/portainer-agent-stack.yml
+          dest: /opt/portainer-agent-stack.yml
+      - name: Deploy Portainer
+        docker_stack:
+          state: present
+          name: mystack
+          compose:
+            - /opt/portainer-agent-stack.yml
+    when: ansible_facts['nodename'] == 'manager'
+    become: true
+  - name: Join workers block
+    block:
+    - name: Join workers
+      community.docker.docker_swarm:
+        state: join
+        join_token: "{{ hostvars['manager']['join_token_worker'] }}"
+        advertise_addr: "{{ ansible_host }}"
+        remote_addrs: 192.168.57.200:2377
+    when: ansible_facts['nodename'] != 'manager'
+    become: true
